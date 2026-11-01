@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111827">
+  <title>FOCUS LAB | 포인터 + 시선 동시 추적</title>
+  <meta name="description" content="마우스·터치 포인터와 추정 시선 좌표를 동시에 기록하는 테스트">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/webgazer@2.1.0/dist/webgazer.js" crossorigin="anonymous"></script>
+</head>
+<body>
+<main class="app">
+  <header class="topbar">
+    <div><p class="eyebrow">ATTENTION STUDY</p><h1>FOCUS LAB</h1></div>
+    <span class="pill" id="statusPill">대기 중</span>
+  </header>
+
+  <section class="intro card" id="intro">
+    <h2>목표 원을 포인터로 따라가 보세요</h2>
+    <p>노란색 목표 원은 각 구간을 16초 동안 천천히 이동합니다. 초록색 마우스·터치 포인터 원으로 따라가세요. 카메라를 켜면 추정 시선 좌표도 화면에는 표시하지 않고 동시에 기록합니다.</p>
+    <div class="privacy">카메라 영상은 저장하거나 업로드하지 않습니다. 포인터·시선 좌표와 결과는 이 기기에 저장되며, 코드에 Apps Script 주소를 등록하면 Google 스프레드시트에도 전송됩니다. CSV 내보내기도 가능합니다.</div>
+    <label class="field">학번 이름<input id="participantCode" maxlength="30" placeholder="예: 2231 홍길동" autocomplete="off"></label>
+    <div class="sheet-setup">
+      <strong>Google 스프레드시트 기록</strong>
+      <p class="small">저장 주소는 화면에 입력하지 않습니다. VS Code의 <code>script.js</code> 맨 위에 Apps Script 웹 앱 주소를 직접 넣어 주세요.</p>
+      <button class="secondary" id="testSheetsConnection" type="button">Google Sheets 연결 확인</button>
+      <p class="small" id="sheetsSetupStatus" role="status" aria-live="polite">연결 확인 버튼을 눌러 대상 스프레드시트에 기록 권한이 있는지 검사할 수 있습니다.</p>
+    </div>
+    <div class="actions">
+      <button class="primary" id="startEye">마우스/터치 + 시선 동시 기록</button>
+      <button class="secondary" id="startMouse">마우스/터치만 테스트 (카메라 없이)</button>
+    </div>
+    <p class="small">동시 기록은 카메라 권한과 시선 보정이 필요합니다. 휴대폰·태블릿은 기종과 브라우저에 따라 시선 추적 성능이 달라질 수 있습니다.</p>
+  </section>
+
+  <section class="calibration card hidden" id="calibration">
+    <h2>시선 보정</h2>
+    <p>카메라 권한을 허용한 뒤 각 점을 바라보면서 터치/클릭하세요. 테스트가 시작되면 초록색 포인터 원으로 목표를 따라가면 됩니다. 시선 좌표는 화면에 표시하지 않고 기록합니다.</p>
+    <div class="cal-grid">
+      <button class="cal-dot" data-point="0" aria-label="첫 번째 보정 점"></button>
+      <button class="cal-dot" data-point="1" aria-label="두 번째 보정 점"></button>
+      <button class="cal-dot" data-point="2" aria-label="세 번째 보정 점"></button>
+      <button class="cal-dot" data-point="3" aria-label="네 번째 보정 점"></button>
+      <button class="cal-dot" data-point="4" aria-label="다섯 번째 보정 점"></button>
+    </div>
+    <p id="calStatus" class="small">1/5 — 점을 바라보며 클릭하세요.</p>
+    <button class="secondary" id="cancelCalibration">취소</button>
+  </section>
+
+  <section class="game card hidden" id="game">
+    <div class="game-head">
+      <div><span class="label">남은 시간</span><strong id="timeLeft">60</strong><span class="unit">초</span></div>
+      <div><span class="label">기록 방식</span><strong id="modeLabel">동시 기록</strong></div>
+      <div><span class="label">구간</span><strong id="phaseLabel">초반</strong></div>
+    </div>
+    <div id="playfield" class="playfield">
+      <div class="target" id="target" aria-label="움직이는 목표 원"></div>
+      <div class="pointer-dot hidden" id="pointerDot" aria-label="마우스 또는 터치 포인터"></div>
+      <div class="hint" id="gameHint">초록색 포인터 원으로 노란색 목표 원을 따라가세요.</div>
+    </div>
+    <div class="legend">
+      <span><i class="legend-target"></i> 목표 원</span>
+      <span><i class="legend-pointer"></i> 마우스/터치 포인터 (화면 표시)</span>
+      <span id="gazeLegend" class="gaze-note hidden">시선 좌표: 화면 비표시 · 기록 중</span>
+    </div>
+    <button class="secondary full" id="stopGame">테스트 종료</button>
+  </section>
+
+  <section class="results card hidden" id="results">
+    <p class="eyebrow">SESSION SUMMARY</p>
+    <h2>테스트 결과</h2>
+    <p id="resultSummary"></p>
+    <div class="metrics" id="metrics"></div>
+    <h3>초반 · 중반 · 후반</h3>
+    <div class="phase-list" id="phaseResults"></div>
+    <p class="small result-caveat">근접률은 목표 원과 기록 좌표의 거리로 계산한 참고 지표입니다. 시선 이탈 지표만으로 참가자의 의도나 부정행위를 단정할 수 없으며, 웹캠 기반 시선 추정에는 오차가 있을 수 있습니다.</p>
+    <p class="small sheets-upload-status" id="sheetsUploadStatus" role="status" aria-live="polite">Google Sheets 전송 상태가 여기에 표시됩니다.</p>
+    <div class="actions">
+      <button class="primary" id="downloadCsv">요약 + 시계열 CSV 저장</button>
+      <button class="secondary" id="sendSheetsAgain">Google Sheets로 다시 전송</button>
+      <button class="secondary" id="again">다시 하기</button>
+    </div>
+    <h3>이 기기의 최근 기록</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>날짜</th><th>기록 방식</th><th>포인터</th><th>시선</th><th>포인터만 목표 근접</th></tr></thead>
+        <tbody id="historyRows"></tbody>
+      </table>
+    </div>
+    <button class="text-button" id="clearHistory">이 기기의 기록 삭제</button>
+  </section>
+  <footer>FOCUS LAB · 프로토타입 · 카메라 영상 미저장 · 좌표는 로컬 저장 및 코드 설정 시 Sheets 전송</footer>
+</main>
+<script src="script.js"></script>
+</body>
+</html>
